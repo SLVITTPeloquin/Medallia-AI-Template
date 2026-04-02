@@ -30,3 +30,7 @@ We need to plan how we will integrate with the Medallia Zingle API before implem
 2. Define an initial architecture for template generation and delivery.
 3. Build a minimal proof of concept for one message flow.
 4. Add test cases and quality checks before production rollout.
+
+## Planning Document
+
+Detailed implementation plan: [`docs/AI_RESPONSE_PLAN.md`](docs/AI_RESPONSE_PLAN.md)
