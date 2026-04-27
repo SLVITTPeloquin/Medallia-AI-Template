@@ -90,6 +90,32 @@ h1 {
   margin-bottom: 16px;
 }
 
+#banner {
+  display: block;
+}
+
+.banner {
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.banner-ok {
+  border-color: #9fd4ca;
+  background: #e9f7f3;
+}
+
+.banner-warn {
+  border-color: #e2c47d;
+  background: #fff7df;
+}
+
+.banner-error {
+  border-color: #dca49f;
+  background: #fdeceb;
+}
+
 .metric {
   background: rgba(255, 253, 248, 0.78);
   border: 1px solid var(--line);

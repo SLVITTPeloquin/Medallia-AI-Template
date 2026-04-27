@@ -26,6 +26,7 @@ The app stores review queue data and the Microsoft Graph token cache in the `rev
 ## Pilot Behavior
 
 - The system reads live inbound email through Microsoft Graph when `Sync Email` is clicked.
+- If Graph auth is not cached yet, use `Email Login` in the admin UI and complete device-code auth, then run `Sync Email`.
 - The system can ingest Zingle messages through the existing webhook routes or the `Sync Zingle` button when Zingle API credentials are configured.
 - Every inbound communication receives a draft, even when the category requires human review.
 - Nothing is sent automatically.

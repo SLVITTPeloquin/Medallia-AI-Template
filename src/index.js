@@ -6,6 +6,22 @@ import { adminRouter } from "./routes/admin.js";
 const app = express();
 
 app.use(express.json({ limit: "1mb" }));
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint();
+
+  res.on("finish", () => {
+    const durationMs = Number(process.hrtime.bigint() - start) / 1_000_000;
+    const isAdminRoute = req.path.startsWith("/admin") || req.path.startsWith("/api/review");
+
+    if (isAdminRoute || res.statusCode >= 400) {
+      console.log(
+        `[request] ${req.method} ${req.originalUrl} status=${res.statusCode} duration_ms=${durationMs.toFixed(1)}`
+      );
+    }
+  });
+
+  next();
+});
 app.use(webhookRouter);
 app.use(adminRouter);
 app.use("/admin", express.static("public/admin"));

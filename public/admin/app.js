@@ -2,16 +2,20 @@ let items = [];
 let selectedId = "";
 
 const metrics = document.querySelector("#metrics");
+const banner = document.querySelector("#banner");
 const queueList = document.querySelector("#queueList");
 const detail = document.querySelector("#detail");
 const sourceFilter = document.querySelector("#sourceFilter");
 
+document.querySelector("#loginEmail").addEventListener("click", startEmailLogin);
 document.querySelector("#pollEmail").addEventListener("click", () => poll("email"));
 document.querySelector("#pollZingle").addEventListener("click", () => poll("zingle"));
 sourceFilter.addEventListener("change", load);
 
 await load();
+await refreshEmailAuthStatus();
 setInterval(load, 30000);
+setInterval(refreshEmailAuthStatus, 20000);
 
 async function load() {
   const source = sourceFilter.value;
@@ -181,20 +185,87 @@ async function sendItem(id) {
 async function poll(source) {
   const endpoint = source === "email" ? "/api/review/poll/email" : "/api/review/poll/zingle";
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  await fetchJson(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ since, top: 50, maxPages: 3, pageSize: 100 })
-  });
+  try {
+    await fetchJson(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ since, top: 50, maxPages: 3, pageSize: 100 })
+    });
+    setBanner("Sync complete.", "ok");
+  } catch (error) {
+    if (source === "email" && error?.status === 401 && error?.payload?.error === "graph_auth_required") {
+      const prompt = error.payload.prompt || {};
+      const message = prompt.message
+        ? prompt.message
+        : "Email sign-in is required. Click Email Login and complete device-code auth.";
+      setBanner(message, "warn");
+      return;
+    }
+    setBanner(`Sync failed: ${error.message}`, "error");
+    throw error;
+  }
   await load();
+  if (source === "email") {
+    await refreshEmailAuthStatus();
+  }
 }
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
-  if (!response.ok) {
-    throw new Error(`${response.status} ${await response.text()}`);
+  const text = await response.text();
+  let payload = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = null;
   }
-  return response.json();
+  if (!response.ok) {
+    const error = new Error(`${response.status} ${payload?.message || text || "request_failed"}`);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+  return payload;
+}
+
+async function startEmailLogin() {
+  const result = await fetchJson("/api/review/auth/email/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+  renderAuthBanner(result);
+}
+
+async function refreshEmailAuthStatus() {
+  const status = await fetchJson("/api/review/auth/email/status");
+  renderAuthBanner(status);
+}
+
+function renderAuthBanner(status) {
+  if (status?.status === "authenticated") {
+    setBanner("Email auth connected.", "ok");
+    return;
+  }
+  if (status?.status === "pending") {
+    const prompt = status.prompt || {};
+    const details = [prompt.message, prompt.verificationUri && prompt.userCode ? `Open ${prompt.verificationUri} and enter code ${prompt.userCode}.` : ""]
+      .filter(Boolean)
+      .join(" ");
+    setBanner(details || "Email login is pending. Complete device-code sign in.", "warn");
+    return;
+  }
+  if (status?.status === "failed") {
+    setBanner(`Email auth failed: ${status.error || "unknown error"}`, "error");
+    return;
+  }
+  setBanner("Email auth not connected. Click Email Login before Sync Email.", "warn");
+}
+
+function setBanner(message, level) {
+  if (!banner) {
+    return;
+  }
+  banner.innerHTML = `<div class="banner banner-${escapeHtml(level || "ok")}">${escapeHtml(message || "")}</div>`;
 }
 
 function escapeHtml(value = "") {

@@ -1,6 +1,12 @@
 import express from "express";
 import { config } from "../config.js";
-import { listGraphMessages, normalizeGraphMessage } from "../services/graph.js";
+import {
+  beginGraphDeviceCodeLogin,
+  getGraphAuthStatus,
+  isGraphAuthRequiredError,
+  listGraphMessages,
+  normalizeGraphMessage
+} from "../services/graph.js";
 import { listInboundZingleMessages, normalizeZingleMessage } from "../services/zingle.js";
 import { normalizeEmailEvent, normalizeSmsEvent, processInboundConversation } from "../orchestrator.js";
 import {
@@ -64,13 +70,26 @@ adminRouter.post("/api/review/items/:id/send", route(async (req, res) => {
 }));
 
 adminRouter.post("/api/review/poll/email", route(async (req, res) => {
-  const messages = await listGraphMessages({
-    folder: "inbox",
-    since: req.body.since || new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-    until: req.body.until || "",
-    top: Number(req.body.top || 50),
-    maxPages: Number(req.body.maxPages || 3)
-  });
+  let messages = [];
+  try {
+    messages = await listGraphMessages({
+      folder: "inbox",
+      since: req.body.since || new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      until: req.body.until || "",
+      top: Number(req.body.top || 50),
+      maxPages: Number(req.body.maxPages || 3),
+      allowDeviceCode: false
+    });
+  } catch (error) {
+    if (isGraphAuthRequiredError(error)) {
+      return res.status(401).json({
+        error: "graph_auth_required",
+        message: error.message,
+        prompt: error.prompt || null
+      });
+    }
+    throw error;
+  }
 
   const items = [];
   for (const message of messages) {
@@ -91,6 +110,16 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
   }
 
   res.json({ processed: items.length, items });
+}));
+
+adminRouter.get("/api/review/auth/email/status", route(async (_req, res) => {
+  const status = await getGraphAuthStatus();
+  res.json(status);
+}));
+
+adminRouter.post("/api/review/auth/email/start", route(async (_req, res) => {
+  const status = await beginGraphDeviceCodeLogin();
+  res.json(status);
 }));
 
 adminRouter.post("/api/review/poll/zingle", route(async (req, res) => {

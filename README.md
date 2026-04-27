@@ -47,6 +47,7 @@ Detailed implementation plan: [`docs/AI_RESPONSE_PLAN.md`](docs/AI_RESPONSE_PLAN
 - Outbound reporting script guide: [`docs/OUTBOUND_COUNTS.md`](docs/OUTBOUND_COUNTS.md)
 - Outlook inbox analysis guide: [`docs/OUTLOOK_INBOX_ANALYSIS.md`](docs/OUTLOOK_INBOX_ANALYSIS.md)
 - Zingle API call guide: [`docs/ZINGLE_API_CALLS.md`](docs/ZINGLE_API_CALLS.md)
+- Azure diagnostics MCP server guide: [`docs/AZURE_MCP_SERVER.md`](docs/AZURE_MCP_SERVER.md)
 
 ## Sandbox MVP Service
 
