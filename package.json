@@ -1,0 +1,28 @@
+{
+  "name": "medallia-ai-template",
+  "version": "0.1.0",
+  "description": "Sandbox MVP for AI-assisted Medallia Zingle responses",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "check": "node --check src/index.js && node --check src/orchestrator.js && node --check src/routes/webhook.js && node --check src/routes/admin.js && node --check src/services/graph.js && node --check src/services/zingle.js && node --check src/services/review-store.js && node --check src/services/mailbox-analysis.js && node --check src/services/historical-response-analysis.js && node --check src/services/automation-playbook.js && node --check scripts/zingle-outbound-counts.mjs && node --check scripts/graph-email-preview.mjs && node --check scripts/process-graph-inbox.mjs && node --check scripts/monitor-graph-inbox.mjs && node --check scripts/analyze-outlook-inbox.mjs && node --check scripts/analyze-historical-responses.mjs && node --check scripts/export-automation-matrix.mjs && node --check scripts/export-reviewer-results.mjs",
+    "counts:outbound": "node scripts/zingle-outbound-counts.mjs",
+    "preview:email": "node scripts/graph-email-preview.mjs",
+    "process:graph-inbox": "node scripts/process-graph-inbox.mjs",
+    "monitor:graph-inbox": "node scripts/monitor-graph-inbox.mjs",
+    "analyze:outlook": "node scripts/analyze-outlook-inbox.mjs",
+    "analyze:history": "node scripts/analyze-historical-responses.mjs",
+    "export:automation-matrix": "node scripts/export-automation-matrix.mjs",
+    "export:reviewer-results": "node scripts/export-reviewer-results.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@azure/msal-node": "^5.1.4",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
+  }
+}

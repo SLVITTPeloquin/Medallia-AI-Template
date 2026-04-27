@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Communications Review</title>
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Pilot inbox</p>
+          <h1>Communications Review</h1>
+        </div>
+        <div class="actions">
+          <button id="pollEmail">Sync Email</button>
+          <button id="pollZingle">Sync Zingle</button>
+        </div>
+      </header>
+
+      <section class="metrics" id="metrics"></section>
+
+      <section class="workspace">
+        <aside class="queue">
+          <div class="queueHeader">
+            <strong>Incoming queue</strong>
+            <select id="sourceFilter">
+              <option value="">All sources</option>
+              <option value="email">Email</option>
+              <option value="zingle">Zingle</option>
+            </select>
+          </div>
+          <div class="queueList" id="queueList"></div>
+        </aside>
+
+        <section class="detail" id="detail">
+          <div class="empty">
+            <h2>Select a message</h2>
+            <p>Choose an incoming communication to review the generated draft and human review markers.</p>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="/admin/app.js"></script>
+  </body>
+</html>

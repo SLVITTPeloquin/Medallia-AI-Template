@@ -1,0 +1,19 @@
+services:
+  review-admin:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      PORT: "3000"
+      RUNTIME_DIR: /app/.runtime
+      MS_GRAPH_TOKEN_CACHE_PATH: /app/.runtime/.graph-token-cache.json
+      APP_ENV: sandbox
+      ALLOW_PROD_AUTOSEND: "false"
+    volumes:
+      - review-runtime:/app/.runtime
+    restart: unless-stopped
+
+volumes:
+  review-runtime:
