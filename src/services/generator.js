@@ -19,6 +19,87 @@ function getSignature() {
   return "Please let me know if you need anything else.";
 }
 
+function toChecklistId(label = "", index = 0) {
+  const normalized = String(label)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || `task_${index + 1}`;
+}
+
+function normalizeChecklistItem(item, index) {
+  const label = String(item?.label || "").trim();
+  if (!label) {
+    return null;
+  }
+  return {
+    id: toChecklistId(label, index),
+    label,
+    required: item?.required !== false,
+    done: false
+  };
+}
+
+function normalizeChecklist(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  const normalized = items
+    .map((item, index) => normalizeChecklistItem(item, index))
+    .filter(Boolean)
+    .slice(0, 6);
+  return normalized;
+}
+
+function extractJsonPayload(text = "") {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const directParse = (() => {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  })();
+  if (directParse) {
+    return directParse;
+  }
+
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch?.[1]) {
+    try {
+      return JSON.parse(fenceMatch[1].trim());
+    } catch {
+      // fall through
+    }
+  }
+
+  const objectStart = trimmed.indexOf("{");
+  const objectEnd = trimmed.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    try {
+      return JSON.parse(trimmed.slice(objectStart, objectEnd + 1));
+    } catch {
+      // ignore
+    }
+  }
+
+  const arrayStart = trimmed.indexOf("[");
+  const arrayEnd = trimmed.lastIndexOf("]");
+  if (arrayStart >= 0 && arrayEnd > arrayStart) {
+    try {
+      return JSON.parse(trimmed.slice(arrayStart, arrayEnd + 1));
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
 function toEmailBody(text = "") {
   return text
     .trim()
@@ -81,6 +162,50 @@ function followUpWindow(urgency = "normal") {
     return "within 2 hours";
   }
   return "within 24 hours";
+}
+
+function buildHeuristicChecklist({ messageText, draft, category }) {
+  const combined = `${messageText}\n${draft}`.toLowerCase();
+  const items = [];
+
+  if (/(reservation|booking|confirm|confirmation number)/i.test(combined)) {
+    items.push({
+      label: "Verify reservation status and include confirmation details in follow-up",
+      required: true
+    });
+  }
+
+  if (/(pool|amenit|hours|children|kid)/i.test(combined)) {
+    items.push({
+      label: "Confirm current amenity hours and age-access policy with operations",
+      required: true
+    });
+  }
+
+  if (/(billing|receipt|invoice|folio|charge|refund|dispute)/i.test(combined)) {
+    items.push({
+      label: "Validate billing details against account records before final response",
+      required: true
+    });
+  }
+
+  if (/(routed|forwarded|shared with|team)/i.test(combined)) {
+    items.push({
+      label: `Route to the ${getRouteLabel(category)} and note case ownership`,
+      required: true
+    });
+  }
+
+  items.push({
+    label: "Review draft tone and accuracy before send",
+    required: true
+  });
+  items.push({
+    label: "Send follow-up matching the timeline promised in the draft",
+    required: true
+  });
+
+  return normalizeChecklist(items);
 }
 
 function hasConcreteResolution(text = "") {
@@ -257,6 +382,51 @@ async function generateViaOpenAI(input) {
   return text;
 }
 
+function buildChecklistPrompt({
+  channel,
+  messageText,
+  subject,
+  draft,
+  intent,
+  category,
+  urgency,
+  playbook
+}) {
+  return [
+    "You generate reviewer action checklists for hospitality replies.",
+    "Return JSON only.",
+    "Output schema:",
+    '{ "actions": [ { "label": "string", "required": true } ] }',
+    "Rules:",
+    "- Create 3 to 6 actions.",
+    "- Actions must be concrete and operational.",
+    "- Actions must directly reflect commitments made in the draft reply.",
+    "- Include any verification steps needed before sending.",
+    "- Keep labels short and imperative.",
+    "",
+    `Channel: ${channel}`,
+    `Intent: ${intent}`,
+    `Category: ${category}`,
+    `Urgency: ${urgency}`,
+    `Handling mode: ${playbook.handlingMode}`,
+    `Subject: ${subject || "N/A"}`,
+    `Guest message: ${messageText}`,
+    `Draft reply: ${draft}`
+  ].join("\n");
+}
+
+async function generateActionChecklistViaAi(context) {
+  const prompt = buildChecklistPrompt(context);
+  const raw = await generateViaOpenAI(prompt);
+  const parsed = extractJsonPayload(raw);
+  const actions = Array.isArray(parsed?.actions) ? parsed.actions : Array.isArray(parsed) ? parsed : [];
+  const normalized = normalizeChecklist(actions);
+  if (!normalized.length) {
+    throw new Error("Action checklist response was empty or invalid JSON");
+  }
+  return normalized;
+}
+
 export async function generateDraft(context) {
   const {
     channel,
@@ -283,11 +453,18 @@ export async function generateDraft(context) {
     category,
     playbook
   });
+  const fallbackChecklist = buildHeuristicChecklist({
+    messageText,
+    draft: fallbackDraft,
+    category
+  });
 
   if (!config.openai.apiKey) {
     return {
       draft: ensureResolutionLine(fallbackDraft, { category, playbook, urgency }),
-      provider: "local-template"
+      provider: "local-template",
+      actionChecklist: fallbackChecklist,
+      checklistProvider: "heuristic"
     };
   }
 
@@ -306,15 +483,40 @@ export async function generateDraft(context) {
       playbook
     });
     const draft = await generateViaOpenAI(prompt);
+    const resolvedDraft = ensureResolutionLine(draft, { category, playbook, urgency });
+    let actionChecklist = fallbackChecklist;
+    let checklistProvider = "heuristic";
+    let checklistError = null;
+    try {
+      actionChecklist = await generateActionChecklistViaAi({
+        channel,
+        messageText,
+        subject,
+        draft: resolvedDraft,
+        intent,
+        category,
+        urgency,
+        playbook
+      });
+      checklistProvider = "openai";
+    } catch (error) {
+      checklistError = error.message;
+    }
+
     return {
-      draft: ensureResolutionLine(draft, { category, playbook, urgency }),
-      provider: "openai"
+      draft: resolvedDraft,
+      provider: "openai",
+      actionChecklist,
+      checklistProvider,
+      checklistError
     };
   } catch (error) {
     return {
       draft: ensureResolutionLine(fallbackDraft, { category, playbook, urgency }),
       provider: "local-template",
-      generatorError: error.message
+      generatorError: error.message,
+      actionChecklist: fallbackChecklist,
+      checklistProvider: "heuristic"
     };
   }
 }

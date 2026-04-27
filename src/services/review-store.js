@@ -41,6 +41,33 @@ function buildMarkers(result) {
 }
 
 function buildActionChecklist(result) {
+  const suggested = result?.suggestion?.action_checklist;
+  if (Array.isArray(suggested) && suggested.length) {
+    const normalized = suggested
+      .map((item, index) => {
+        const label = String(item?.label || "").trim();
+        if (!label) {
+          return null;
+        }
+        return {
+          id:
+            String(item?.id || "")
+              .trim()
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")
+              .replace(/^_+|_+$/g, "") || `task_${index + 1}`,
+          label,
+          required: item?.required !== false,
+          done: false
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 6);
+    if (normalized.length) {
+      return normalized;
+    }
+  }
+
   const list = [
     { id: "confirm_context", label: "Confirm sender context and request details", required: true, done: false },
     { id: "review_tone", label: "Review tone and human touch edits", required: true, done: false },

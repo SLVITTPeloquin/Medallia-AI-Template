@@ -143,6 +143,8 @@ export async function processInboundConversation(envelope) {
         draft: generation.draft,
         intent
       }),
+      action_checklist: generation.actionChecklist || [],
+      action_checklist_provider: generation.checklistProvider || "heuristic",
       provider: generation.provider,
       mode: "preview"
     },
@@ -152,7 +154,8 @@ export async function processInboundConversation(envelope) {
     },
     diagnostics: {
       guardrail_issues: guardrail.issues,
-      generator_error: generation.generatorError || null
+      generator_error: generation.generatorError || null,
+      checklist_error: generation.checklistError || null
     }
   };
 }
