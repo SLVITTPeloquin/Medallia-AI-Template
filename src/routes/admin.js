@@ -151,6 +151,11 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
     });
   } catch (error) {
     if (isGraphAuthRequiredError(error)) {
+      await updateSyncState("email", {
+        in_progress: false,
+        phase: "auth_required",
+        status_text: "Email sign-in required. Click Email Login."
+      });
       return res.status(401).json({
         error: "graph_auth_required",
         message: error.message,
