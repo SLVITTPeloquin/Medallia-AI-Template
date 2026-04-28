@@ -77,8 +77,12 @@ function renderQueue() {
 
 function renderDetail(item) {
   const checklist = Array.isArray(item.action_checklist) ? item.action_checklist : [];
+  const draftOptions = Array.isArray(item.draft_options) ? item.draft_options : [];
+  const draftA = draftOptions[0] || item.draft_body || "";
+  const draftB = draftOptions[1] || draftA;
   const canSend = Boolean(item.can_send);
   const categoryReview = item.category_review || "pending";
+  const reviewDecision = item.review_decision || "";
   detail.innerHTML = `
     <div class="detailGrid">
       <section class="panel">
@@ -109,9 +113,41 @@ function renderDetail(item) {
         </div>
       </section>
       <section class="panel">
-        <h3>Draft</h3>
+        <h3>Draft Options</h3>
+        <p class="meta"><strong>Draft A</strong></p>
+        <textarea class="draftEditor" id="draftA" readonly>${escapeHtml(draftA)}</textarea>
+        <div class="toolbar">
+          <button class="secondary" id="useDraftA">Use Draft A</button>
+        </div>
+        <p class="meta"><strong>Draft B</strong></p>
+        <textarea class="draftEditor" id="draftB" readonly>${escapeHtml(draftB)}</textarea>
+        <div class="toolbar">
+          <button class="secondary" id="useDraftB">Use Draft B</button>
+        </div>
+        <h3>Selected Draft</h3>
         <input class="draftSubject" id="draftSubject" value="${escapeAttr(item.draft_subject || "")}" />
         <textarea class="draftEditor" id="draftBody">${escapeHtml(item.draft_body || "")}</textarea>
+        <h3>Response Evaluation</h3>
+        <div class="markers">
+          ${[
+            ["a_good", "Draft A is good"],
+            ["b_good", "Draft B is good"],
+            ["both_good", "Both are good"],
+            ["neither_good", "Neither are good"]
+          ]
+            .map(
+              ([value, label]) => `
+                <label class="todo">
+                  <input type="radio" name="reviewDecision" value="${value}" ${reviewDecision === value ? "checked" : ""} />
+                  <span>${escapeHtml(label)}</span>
+                </label>
+              `
+            )
+            .join("")}
+        </div>
+        <textarea class="draftEditor" id="reviewJustification" placeholder="Why this evaluation? What should be improved?">${escapeHtml(
+          item.review_justification || ""
+        )}</textarea>
         <div class="toolbar">
           <button id="saveDraft">Save Draft</button>
           <button class="secondary" data-status="ready">Mark Ready</button>
@@ -137,6 +173,8 @@ function renderDetail(item) {
 
   document.querySelector("#saveDraft").addEventListener("click", () => saveItem(item.id));
   document.querySelector("#sendDraft").addEventListener("click", () => sendItem(item.id));
+  document.querySelector("#useDraftA").addEventListener("click", () => applyDraftVariant("a"));
+  document.querySelector("#useDraftB").addEventListener("click", () => applyDraftVariant("b"));
   for (const button of detail.querySelectorAll("[data-status]")) {
     button.addEventListener("click", () => saveItem(item.id, button.dataset.status));
   }
@@ -148,13 +186,34 @@ function renderDetail(item) {
   }
 }
 
+function applyDraftVariant(variant) {
+  const source = items.find((item) => item.id === selectedId);
+  const options = Array.isArray(source?.draft_options) ? source.draft_options : [];
+  const next = variant === "b" ? options[1] : options[0];
+  if (!next) {
+    return;
+  }
+  const editor = document.querySelector("#draftBody");
+  if (editor) {
+    editor.value = next;
+  }
+}
+
 async function saveItem(id, status, categoryReview) {
   const source = items.find((item) => item.id === id);
   const existingChecklist = Array.isArray(source?.action_checklist) ? source.action_checklist : [];
+  const selectedDecision = detail.querySelector("input[name='reviewDecision']:checked")?.value || "";
+  const draftOptions = Array.isArray(source?.draft_options) ? source.draft_options : [];
+  const currentDraftBody = document.querySelector("#draftBody")?.value || "";
+  const selectedVariant = draftOptions[1] === currentDraftBody ? "b" : "a";
   const payload = {
     draft_subject: document.querySelector("#draftSubject")?.value || "",
-    draft_body: document.querySelector("#draftBody")?.value || "",
+    draft_body: currentDraftBody,
+    draft_options: draftOptions,
+    selected_draft_variant: selectedVariant,
     notes: document.querySelector("#notes")?.value || "",
+    review_decision: selectedDecision,
+    review_justification: document.querySelector("#reviewJustification")?.value || "",
     category_review_notes: document.querySelector("#categoryReviewNotes")?.value || "",
     action_checklist: existingChecklist.map((task, index) => ({
       ...task,

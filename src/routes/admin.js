@@ -60,7 +60,11 @@ adminRouter.patch("/api/review/items/:id", route(async (req, res) => {
     "status",
     "draft_subject",
     "draft_body",
+    "draft_options",
+    "selected_draft_variant",
     "notes",
+    "review_decision",
+    "review_justification",
     "category_review",
     "category_review_notes",
     "action_checklist"

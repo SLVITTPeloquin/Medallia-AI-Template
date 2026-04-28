@@ -95,6 +95,33 @@ function buildActionChecklist(result) {
   return list;
 }
 
+function buildAlternativeDraft(draft = "") {
+  const text = String(draft || "").trim();
+  if (!text) {
+    return "";
+  }
+  const sentences = text
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .filter(Boolean);
+  if (sentences.length <= 2) {
+    return text;
+  }
+  return sentences.slice(0, Math.max(2, sentences.length - 1)).join(" ");
+}
+
+function normalizeDraftOptions(item = {}) {
+  const options = Array.isArray(item.draft_options) ? item.draft_options.filter(Boolean) : [];
+  const base = String(item.draft_body || item.original_draft_body || "");
+  if (options.length >= 2) {
+    return options.slice(0, 2);
+  }
+  if (options.length === 1) {
+    return [options[0], buildAlternativeDraft(options[0]) || base];
+  }
+  return [base, buildAlternativeDraft(base)];
+}
+
 function computeCanSend(item) {
   const checklist = Array.isArray(item.action_checklist) ? item.action_checklist : [];
   const requiredDone = checklist.filter((task) => task.required).every((task) => task.done);
@@ -137,7 +164,11 @@ function normalizeStoredItem(item) {
           { id: "verify_facts", label: "Verify property facts and policy statements", required: true, done: false }
         ],
     category_review: item.category_review || "pending",
-    category_review_notes: item.category_review_notes || ""
+    category_review_notes: item.category_review_notes || "",
+    draft_options: normalizeDraftOptions(item),
+    selected_draft_variant: item.selected_draft_variant || "a",
+    review_decision: item.review_decision || "",
+    review_justification: item.review_justification || ""
   };
   normalized.can_send = computeCanSend(normalized);
   return normalized;
@@ -145,6 +176,13 @@ function normalizeStoredItem(item) {
 
 export function buildReviewItem({ source, envelope, normalized, result, receivedAt }) {
   const draftBody = result.suggestion.body || (result.suggestion.segments || []).join("\n\n");
+  const suggestionDraftOptions = Array.isArray(result.suggestion?.draft_options)
+    ? result.suggestion.draft_options.filter(Boolean).slice(0, 2)
+    : [];
+  const draftOptions =
+    suggestionDraftOptions.length >= 2
+      ? suggestionDraftOptions
+      : [draftBody, buildAlternativeDraft(draftBody)];
   const sourceMessageId =
     normalized?.email?.id || normalized?.message?.id || envelope.metadata?.emailId || envelope.metadata?.messageId || envelope.sourceEventId;
   const id = stableId(source, sourceMessageId, envelope.threadId, envelope.messageText.slice(0, 120));
@@ -175,6 +213,8 @@ export function buildReviewItem({ source, envelope, normalized, result, received
     draft_subject: result.suggestion.subject || "",
     draft_body: draftBody,
     original_draft_body: draftBody,
+    draft_options: draftOptions,
+    selected_draft_variant: "a",
     provider: result.suggestion.provider,
     review_markers: buildMarkers(result),
     action_checklist: buildActionChecklist(result),
@@ -183,6 +223,8 @@ export function buildReviewItem({ source, envelope, normalized, result, received
     guardrail_issues: result.diagnostics.guardrail_issues || [],
     generator_error: result.diagnostics.generator_error || "",
     notes: "",
+    review_decision: "",
+    review_justification: "",
     evidence: result.evidence || {}
   };
   item.can_send = computeCanSend(item);
@@ -193,11 +235,22 @@ export async function upsertReviewItem(item) {
   const items = (await readStore()).map(normalizeStoredItem);
   const index = items.findIndex((existing) => existing.id === item.id);
   if (index >= 0) {
+    const existing = items[index];
+    const preserveReviewerState = ["in_review", "ready", "sent"].includes(existing.status);
     items[index] = {
-      ...items[index],
+      ...existing,
       ...item,
-      status: items[index].status === "sent" ? "sent" : item.status,
-      notes: items[index].notes || item.notes || "",
+      status: existing.status === "sent" ? "sent" : item.status,
+      notes: existing.notes || item.notes || "",
+      category_review: preserveReviewerState ? existing.category_review : item.category_review,
+      category_review_notes: preserveReviewerState ? existing.category_review_notes : item.category_review_notes,
+      action_checklist: preserveReviewerState ? existing.action_checklist : item.action_checklist,
+      draft_body: preserveReviewerState ? existing.draft_body : item.draft_body,
+      draft_subject: preserveReviewerState ? existing.draft_subject : item.draft_subject,
+      draft_options: preserveReviewerState ? existing.draft_options : normalizeDraftOptions(item),
+      selected_draft_variant: preserveReviewerState ? existing.selected_draft_variant : item.selected_draft_variant,
+      review_decision: preserveReviewerState ? existing.review_decision : item.review_decision,
+      review_justification: preserveReviewerState ? existing.review_justification : item.review_justification,
       updated_at: new Date().toISOString()
     };
     items[index].can_send = computeCanSend(items[index]);
@@ -232,6 +285,8 @@ export async function updateReviewItem(id, patch) {
   await writeStore(items);
   if (
     patch.notes !== undefined ||
+    patch.review_decision !== undefined ||
+    patch.review_justification !== undefined ||
     patch.category_review !== undefined ||
     patch.category_review_notes !== undefined ||
     patch.action_checklist !== undefined
@@ -241,6 +296,8 @@ export async function updateReviewItem(id, patch) {
       at: new Date().toISOString(),
       status: items[index].status,
       notes: patch.notes ?? before.notes ?? "",
+      review_decision: patch.review_decision ?? before.review_decision ?? "",
+      review_justification: patch.review_justification ?? before.review_justification ?? "",
       category_review: patch.category_review ?? before.category_review ?? "pending",
       category_review_notes: patch.category_review_notes ?? before.category_review_notes ?? "",
       action_checklist: patch.action_checklist ?? before.action_checklist ?? []
