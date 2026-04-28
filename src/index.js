@@ -2,6 +2,7 @@ import express from "express";
 import { config, assertEnvironmentGuards } from "./config.js";
 import { webhookRouter } from "./routes/webhook.js";
 import { adminRouter } from "./routes/admin.js";
+import { outlookRouter } from "./routes/outlook.js";
 
 const app = express();
 
@@ -24,7 +25,9 @@ app.use((req, res, next) => {
 });
 app.use(webhookRouter);
 app.use(adminRouter);
+app.use(outlookRouter);
 app.use("/admin", express.static("public/admin"));
+app.use("/outlook", express.static("public/outlook"));
 
 app.use((error, _req, res, _next) => {
   console.error("[error]", error);

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SAHARA Draft Assistant</title>
+    <link rel="stylesheet" href="/outlook/taskpane.css" />
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  </head>
+  <body>
+    <main class="pane">
+      <header class="header">
+        <div>
+          <p class="eyebrow">SAHARA alpha</p>
+          <h1>Draft Assistant</h1>
+        </div>
+        <span id="statusPill" class="pill">Idle</span>
+      </header>
+
+      <section class="message">
+        <div class="meta" id="messageMeta">No message loaded</div>
+        <div class="subject" id="messageSubject">Open an email in Outlook.</div>
+      </section>
+
+      <section class="controls">
+        <button id="generateDraft">Generate Draft</button>
+        <button id="insertDraft" class="secondary" disabled>Insert Draft</button>
+        <button id="openReply" class="secondary" disabled>Open Reply</button>
+      </section>
+
+      <section class="panel">
+        <div class="panelHeader">
+          <h2>Action Checklist</h2>
+          <span class="meta" id="confidence"></span>
+        </div>
+        <div id="checklist" class="checklist">
+          <div class="empty">Generate a draft to populate actions.</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panelHeader">
+          <h2>Draft</h2>
+          <select id="draftVariant" disabled>
+            <option value="0">Draft A</option>
+            <option value="1">Draft B</option>
+          </select>
+        </div>
+        <input id="draftSubject" class="subjectInput" placeholder="Subject" />
+        <textarea id="draftBody" class="draftEditor" placeholder="Draft will appear here"></textarea>
+      </section>
+
+      <section class="panel">
+        <h2>Alpha Audit</h2>
+        <div class="feedbackGrid">
+          <button class="auditChoice secondary" data-decision="a_good">A good</button>
+          <button class="auditChoice secondary" data-decision="b_good">B good</button>
+          <button class="auditChoice secondary" data-decision="both_good">Both</button>
+          <button class="auditChoice secondary" data-decision="neither_good">Neither</button>
+        </div>
+        <textarea id="auditNotes" class="notes" placeholder="What should be improved?"></textarea>
+        <button id="submitAudit" class="secondary" disabled>Submit Audit</button>
+      </section>
+    </main>
+    <script type="module" src="/outlook/taskpane.js"></script>
+  </body>
+</html>

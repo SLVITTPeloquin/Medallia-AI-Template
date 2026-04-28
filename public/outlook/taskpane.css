@@ -1,0 +1,183 @@
+:root {
+  --bg: #f7f7eb;
+  --ink: #242c34;
+  --muted: #3c6277;
+  --line: #bea775;
+  --maroon: #702425;
+  --gold: #bea775;
+  --teal: #4bb3b8;
+  --orange: #c87828;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Aptos", "Segoe UI", sans-serif;
+}
+
+button,
+textarea,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 1px solid var(--maroon);
+  background: var(--maroon);
+  color: white;
+  border-radius: 6px;
+  padding: 9px 11px;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: white;
+  color: var(--maroon);
+}
+
+.pane {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.header,
+.panelHeader,
+.controls,
+.feedbackGrid {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.header,
+.panelHeader {
+  justify-content: space-between;
+}
+
+.eyebrow {
+  margin: 0 0 2px;
+  color: var(--maroon);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+h1,
+h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-size: 22px;
+}
+
+h2 {
+  font-size: 14px;
+}
+
+.pill {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.message,
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 11px;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.subject {
+  margin-top: 4px;
+  font-weight: 800;
+}
+
+.controls {
+  flex-wrap: wrap;
+}
+
+.controls button {
+  flex: 1 1 100px;
+}
+
+.checklist {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.todo {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 8px;
+  align-items: start;
+  border: 1px solid rgba(190, 167, 117, 0.65);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.subjectInput,
+.draftEditor,
+.notes,
+select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px;
+  background: white;
+}
+
+.draftEditor {
+  min-height: 230px;
+  margin-top: 8px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.notes {
+  min-height: 80px;
+  margin: 8px 0;
+  resize: vertical;
+}
+
+.feedbackGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 10px;
+}
+
+.auditChoice.active {
+  background: rgba(75, 179, 184, 0.16);
+  border-color: var(--teal);
+  color: var(--ink);
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 12px;
+}
