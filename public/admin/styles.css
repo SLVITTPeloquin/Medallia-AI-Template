@@ -1,13 +1,16 @@
 :root {
-  --bg: #f4f1eb;
-  --ink: #191a18;
-  --muted: #68675f;
-  --line: #d8d2c7;
-  --panel: #fffdf8;
-  --accent: #136f63;
-  --accent-2: #b13b2e;
-  --gold: #c18b22;
-  --shadow: 0 18px 50px rgba(36, 31, 23, 0.1);
+  --bg: #f7f7eb;
+  --ink: #242c34;
+  --muted: #3c6277;
+  --line: #bea775;
+  --panel: #f7f7eb;
+  --brand-maroon: #702425;
+  --brand-gold: #bea775;
+  --accent-gold: #e6cc67;
+  --accent-orange: #c87828;
+  --accent-teal: #4bb3b8;
+  --accent-blue: #3c6277;
+  --shadow: 0 18px 50px rgba(36, 44, 52, 0.12);
 }
 
 * {
@@ -17,8 +20,8 @@
 body {
   margin: 0;
   background:
-    linear-gradient(135deg, rgba(19, 111, 99, 0.09), transparent 34%),
-    linear-gradient(315deg, rgba(193, 139, 34, 0.12), transparent 30%),
+    linear-gradient(135deg, rgba(112, 36, 37, 0.1), transparent 34%),
+    linear-gradient(315deg, rgba(190, 167, 117, 0.16), transparent 32%),
     var(--bg);
   color: var(--ink);
   font-family: ui-sans-serif, "Aptos", "Segoe UI", sans-serif;
@@ -32,8 +35,8 @@ input {
 }
 
 button {
-  border: 1px solid var(--ink);
-  background: var(--ink);
+  border: 1px solid var(--brand-maroon);
+  background: var(--brand-maroon);
   color: white;
   padding: 10px 14px;
   border-radius: 6px;
@@ -47,7 +50,8 @@ button:disabled {
 
 button.secondary {
   background: transparent;
-  color: var(--ink);
+  color: var(--brand-maroon);
+  border-color: var(--brand-maroon);
 }
 
 .shell {
@@ -65,10 +69,24 @@ button.secondary {
 
 .eyebrow {
   margin: 0 0 3px;
-  color: var(--accent);
+  color: var(--brand-maroon);
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brandLogo {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: rgba(247, 247, 235, 0.8);
 }
 
 h1 {
@@ -101,7 +119,7 @@ h1 {
 .progressWrap {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.95);
+  background: rgba(247, 247, 235, 0.95);
   padding: 10px 12px;
 }
 
@@ -118,14 +136,14 @@ h1 {
   width: 100%;
   height: 10px;
   border-radius: 999px;
-  background: #e8e1d6;
+  background: rgba(190, 167, 117, 0.35);
   overflow: hidden;
 }
 
 .progressFill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #136f63, #2f9f8f);
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-teal));
   transition: width 0.2s ease;
 }
 
@@ -137,22 +155,22 @@ h1 {
 }
 
 .banner-ok {
-  border-color: #9fd4ca;
-  background: #e9f7f3;
+  border-color: var(--accent-teal);
+  background: rgba(75, 179, 184, 0.14);
 }
 
 .banner-warn {
-  border-color: #e2c47d;
-  background: #fff7df;
+  border-color: var(--accent-gold);
+  background: rgba(230, 204, 103, 0.2);
 }
 
 .banner-error {
-  border-color: #dca49f;
-  background: #fdeceb;
+  border-color: var(--accent-orange);
+  background: rgba(200, 120, 40, 0.15);
 }
 
 .metric {
-  background: rgba(255, 253, 248, 0.78);
+  background: rgba(247, 247, 235, 0.82);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 14px;
@@ -218,7 +236,7 @@ h1 {
 }
 
 .queueItem.active {
-  background: #e6f1ed;
+  background: rgba(75, 179, 184, 0.14);
 }
 
 .rowTop {
@@ -249,22 +267,22 @@ h1 {
 
 .badge.email,
 .badge.zingle {
-  background: #ebe4d7;
+  background: rgba(190, 167, 117, 0.28);
 }
 
 .badge.high {
-  background: #f7d9d4;
-  color: #842317;
+  background: rgba(112, 36, 37, 0.2);
+  color: var(--brand-maroon);
 }
 
 .badge.medium {
-  background: #f7ebc7;
-  color: #76530b;
+  background: rgba(230, 204, 103, 0.28);
+  color: #7a5a0d;
 }
 
 .badge.low {
-  background: #d8eee8;
-  color: #0d5d53;
+  background: rgba(75, 179, 184, 0.22);
+  color: #24585b;
 }
 
 .detail {
@@ -312,8 +330,8 @@ h1 {
 }
 
 .marker {
-  border-left: 4px solid var(--gold);
-  background: #fff7df;
+  border-left: 4px solid var(--accent-gold);
+  background: rgba(230, 204, 103, 0.16);
   padding: 9px 10px;
   border-radius: 4px;
 }
