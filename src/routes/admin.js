@@ -18,6 +18,7 @@ import {
   updateReviewItem,
   upsertReviewItem
 } from "../services/review-store.js";
+import { getSyncState, updateSyncState } from "../services/sync-state.js";
 
 export const adminRouter = express.Router();
 
@@ -71,14 +72,33 @@ adminRouter.post("/api/review/items/:id/send", route(async (req, res) => {
 }));
 
 adminRouter.post("/api/review/poll/email", route(async (req, res) => {
+  const existingEmailItems = await listReviewItems({ source: "email" });
+  const knownSourceMessageIds = new Set(existingEmailItems.map((item) => item.source_message_id).filter(Boolean));
+  const syncState = await getSyncState("email");
+  const latestKnownReceivedAt = existingEmailItems
+    .map((item) => item.received_at || item.created_at)
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
+
+  let effectiveSince = req.body.since || "";
+  if (!effectiveSince) {
+    if (syncState.last_polled_at) {
+      effectiveSince = syncState.last_polled_at;
+    } else if (latestKnownReceivedAt) {
+      effectiveSince = new Date(Date.parse(latestKnownReceivedAt) - 5 * 60 * 1000).toISOString();
+    } else {
+      effectiveSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    }
+  }
+
   let messages = [];
   try {
     messages = await listGraphMessages({
       folder: "inbox",
-      since: req.body.since || new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      since: effectiveSince,
       until: req.body.until || "",
       top: Number(req.body.top || 50),
-      maxPages: Number(req.body.maxPages || 3),
+      maxPages: Number(req.body.maxPages || 12),
       allowDeviceCode: false
     });
   } catch (error) {
@@ -93,8 +113,15 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
   }
 
   const items = [];
+  let skippedAlreadyIndexed = 0;
   for (const message of messages) {
     const normalized = normalizeGraphMessage(message);
+    const sourceMessageId = normalized?.email?.id || message.id || "";
+    if (sourceMessageId && knownSourceMessageIds.has(sourceMessageId)) {
+      skippedAlreadyIndexed += 1;
+      continue;
+    }
+
     const envelope = normalizeEmailEvent(normalized);
     if (!envelope.messageText?.trim()) {
       continue;
@@ -107,10 +134,28 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
       result,
       receivedAt: message.receivedDateTime || normalized.email.received_at
     });
-    items.push(await upsertReviewItem(item));
+    const saved = await upsertReviewItem(item);
+    if (saved.source_message_id) {
+      knownSourceMessageIds.add(saved.source_message_id);
+    }
+    items.push(saved);
   }
 
-  res.json({ processed: items.length, items });
+  await updateSyncState("email", {
+    last_polled_at: new Date().toISOString(),
+    last_effective_since: effectiveSince,
+    fetched_count: messages.length,
+    processed_count: items.length,
+    skipped_already_indexed: skippedAlreadyIndexed
+  });
+
+  res.json({
+    processed: items.length,
+    fetched: messages.length,
+    skipped_already_indexed: skippedAlreadyIndexed,
+    since: effectiveSince,
+    items
+  });
 }));
 
 adminRouter.get("/api/review/auth/email/status", route(async (_req, res) => {

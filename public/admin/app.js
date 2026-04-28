@@ -184,12 +184,15 @@ async function sendItem(id) {
 
 async function poll(source) {
   const endpoint = source === "email" ? "/api/review/poll/email" : "/api/review/poll/zingle";
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const payload =
+    source === "email"
+      ? { top: 50, maxPages: 12, pageSize: 100 }
+      : { since: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), top: 50, maxPages: 3, pageSize: 100 };
   try {
     await fetchJson(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ since, top: 50, maxPages: 3, pageSize: 100 })
+      body: JSON.stringify(payload)
     });
     setBanner("Sync complete.", "ok");
   } catch (error) {

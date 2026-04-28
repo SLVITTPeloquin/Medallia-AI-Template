@@ -3,6 +3,7 @@ import path from "node:path";
 
 const appEnv = process.env.APP_ENV || "sandbox";
 const isProd = appEnv === "production";
+const defaultRuntimeDir = process.env.WEBSITE_SITE_NAME ? "/home/medallia-runtime" : path.resolve(process.cwd(), ".runtime");
 
 export const config = {
   port: Number(process.env.PORT || 3000),
@@ -11,7 +12,7 @@ export const config = {
   isProd,
   enforceSandboxOnly: process.env.ENFORCE_SANDBOX_ONLY !== "false",
   allowProdAutosend: process.env.ALLOW_PROD_AUTOSEND === "true",
-  runtimeDir: process.env.RUNTIME_DIR || path.resolve(process.cwd(), ".runtime"),
+  runtimeDir: process.env.RUNTIME_DIR || defaultRuntimeDir,
   admin: {
     enabled: process.env.ADMIN_ENABLED !== "false"
   },
