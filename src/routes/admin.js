@@ -109,6 +109,13 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
   }
 
   let messages = [];
+  await updateSyncState("email", {
+    in_progress: true,
+    phase: "fetching",
+    progress_total: 0,
+    progress_current: 0,
+    status_text: "Fetching emails from inbox..."
+  });
   try {
     messages = await listGraphMessages({
       folder: "inbox",
@@ -126,12 +133,26 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
         prompt: error.prompt || null
       });
     }
+    await updateSyncState("email", {
+      in_progress: false,
+      phase: "error",
+      status_text: error.message || "Email sync failed"
+    });
     throw error;
   }
 
+  await updateSyncState("email", {
+    in_progress: true,
+    phase: "processing",
+    progress_total: messages.length,
+    progress_current: 0,
+    status_text: `Processing 0/${messages.length} emails...`
+  });
+
   const items = [];
   let skippedAlreadyIndexed = 0;
-  for (const message of messages) {
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
     const normalized = normalizeGraphMessage(message);
     const sourceMessageId = normalized?.email?.id || message.id || "";
     if (sourceMessageId && knownSourceMessageIds.has(sourceMessageId)) {
@@ -156,14 +177,29 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
       knownSourceMessageIds.add(saved.source_message_id);
     }
     items.push(saved);
+
+    if ((index + 1) % 5 === 0 || index === messages.length - 1) {
+      await updateSyncState("email", {
+        in_progress: true,
+        phase: "processing",
+        progress_total: messages.length,
+        progress_current: index + 1,
+        status_text: `Processing ${index + 1}/${messages.length} emails...`
+      });
+    }
   }
 
   await updateSyncState("email", {
+    in_progress: false,
+    phase: "completed",
     last_polled_at: new Date().toISOString(),
     last_effective_since: effectiveSince,
     fetched_count: messages.length,
     processed_count: items.length,
-    skipped_already_indexed: skippedAlreadyIndexed
+    skipped_already_indexed: skippedAlreadyIndexed,
+    progress_total: messages.length,
+    progress_current: messages.length,
+    status_text: `Sync complete. Processed ${items.length} new, skipped ${skippedAlreadyIndexed} already indexed.`
   });
 
   res.json({
@@ -174,6 +210,11 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
     since: effectiveSince,
     items
   });
+}));
+
+adminRouter.get("/api/review/poll/email/status", route(async (_req, res) => {
+  const status = await getSyncState("email");
+  res.json(status);
 }));
 
 adminRouter.get("/api/review/auth/email/status", route(async (_req, res) => {

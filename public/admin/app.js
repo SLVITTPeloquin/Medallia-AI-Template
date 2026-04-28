@@ -3,6 +3,7 @@ let selectedId = "";
 
 const metrics = document.querySelector("#metrics");
 const banner = document.querySelector("#banner");
+const progress = document.querySelector("#progress");
 const queueList = document.querySelector("#queueList");
 const detail = document.querySelector("#detail");
 const sourceFilter = document.querySelector("#sourceFilter");
@@ -188,6 +189,11 @@ async function poll(source) {
     source === "email"
       ? { top: 50, maxPages: 12, pageSize: 100 }
       : { since: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), top: 50, maxPages: 3, pageSize: 100 };
+  let stopProgressPolling = null;
+  if (source === "email") {
+    renderProgress({ phase: "starting", status_text: "Starting email sync...", progress_current: 0, progress_total: 0 });
+    stopProgressPolling = startEmailProgressPolling();
+  }
   try {
     await fetchJson(endpoint, {
       method: "POST",
@@ -206,6 +212,12 @@ async function poll(source) {
     }
     setBanner(`Sync failed: ${error.message}`, "error");
     throw error;
+  } finally {
+    if (stopProgressPolling) {
+      stopProgressPolling();
+      await refreshEmailProgress();
+      setTimeout(clearProgress, 3500);
+    }
   }
   await load();
   if (source === "email") {
@@ -268,6 +280,54 @@ function setBanner(message, level) {
     return;
   }
   banner.innerHTML = `<div class="banner banner-${escapeHtml(level || "ok")}">${escapeHtml(message || "")}</div>`;
+}
+
+function clearProgress() {
+  if (!progress) {
+    return;
+  }
+  progress.innerHTML = "";
+}
+
+function renderProgress(status = {}) {
+  if (!progress) {
+    return;
+  }
+  const total = Number(status.progress_total || 0);
+  const current = Number(status.progress_current || 0);
+  const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((current / total) * 100))) : status.phase === "completed" ? 100 : 5;
+  const text = status.status_text || "Working...";
+  const counts = total > 0 ? `${current}/${total}` : status.phase === "fetching" ? "fetching..." : "";
+  progress.innerHTML = `
+    <div class="progressWrap">
+      <div class="progressTop">
+        <strong>${escapeHtml(text)}</strong>
+        <span>${escapeHtml(counts)}</span>
+      </div>
+      <div class="progressBar">
+        <div class="progressFill" style="width:${percent}%"></div>
+      </div>
+    </div>
+  `;
+}
+
+async function refreshEmailProgress() {
+  try {
+    const status = await fetchJson("/api/review/poll/email/status");
+    if (status?.phase) {
+      renderProgress(status);
+    }
+  } catch {
+    // best effort only
+  }
+}
+
+function startEmailProgressPolling() {
+  const timer = setInterval(() => {
+    refreshEmailProgress();
+  }, 900);
+  refreshEmailProgress();
+  return () => clearInterval(timer);
 }
 
 window.addEventListener("message", async (event) => {
