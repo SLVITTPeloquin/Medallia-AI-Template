@@ -187,7 +187,7 @@ async function poll(source) {
   const endpoint = source === "email" ? "/api/review/poll/email" : "/api/review/poll/zingle";
   const payload =
     source === "email"
-      ? { top: 50, maxPages: 12, pageSize: 100 }
+      ? { pageSize: 100 }
       : { since: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), top: 50, maxPages: 3, pageSize: 100 };
   let stopProgressPolling = null;
   if (source === "email") {

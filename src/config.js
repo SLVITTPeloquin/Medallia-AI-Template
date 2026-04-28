@@ -25,6 +25,12 @@ export const config = {
   email: {
     provider: process.env.EMAIL_PROVIDER || "microsoft-graph",
     mailbox: process.env.EMAIL_MAILBOX || "",
+    sync: {
+      fullHistoryOnFirstSync: process.env.EMAIL_FULL_HISTORY_ON_FIRST_SYNC !== "false",
+      fullHistoryMaxPages: Number(process.env.EMAIL_FULL_HISTORY_MAX_PAGES || 200),
+      defaultTop: Number(process.env.EMAIL_SYNC_PAGE_SIZE || 100),
+      incrementalMaxPages: Number(process.env.EMAIL_INCREMENTAL_MAX_PAGES || 12)
+    },
     graph: {
       tenantId: process.env.MS_GRAPH_TENANT_ID || "",
       clientId: process.env.MS_GRAPH_CLIENT_ID || "",

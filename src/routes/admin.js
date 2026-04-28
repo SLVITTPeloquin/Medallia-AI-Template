@@ -96,9 +96,16 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
     .map((item) => item.received_at || item.created_at)
     .filter(Boolean)
     .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
+  const requestedFullHistory = Boolean(req.body.fullHistory);
+  const shouldBootstrapFullHistory =
+    (requestedFullHistory ||
+      (config.email.sync.fullHistoryOnFirstSync && !syncState.full_history_seeded && existingEmailItems.length === 0)) &&
+    !req.body.since;
 
   let effectiveSince = req.body.since || "";
-  if (!effectiveSince) {
+  if (shouldBootstrapFullHistory) {
+    effectiveSince = "";
+  } else if (!effectiveSince) {
     if (syncState.last_polled_at) {
       effectiveSince = syncState.last_polled_at;
     } else if (latestKnownReceivedAt) {
@@ -121,8 +128,11 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
       folder: "inbox",
       since: effectiveSince,
       until: req.body.until || "",
-      top: Number(req.body.top || 50),
-      maxPages: Number(req.body.maxPages || 12),
+      top: Number(req.body.top || config.email.sync.defaultTop),
+      maxPages: Number(
+        req.body.maxPages ||
+          (shouldBootstrapFullHistory ? config.email.sync.fullHistoryMaxPages : config.email.sync.incrementalMaxPages)
+      ),
       allowDeviceCode: false
     });
   } catch (error) {
@@ -194,6 +204,7 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
     phase: "completed",
     last_polled_at: new Date().toISOString(),
     last_effective_since: effectiveSince,
+    full_history_seeded: syncState.full_history_seeded || shouldBootstrapFullHistory,
     fetched_count: messages.length,
     processed_count: items.length,
     skipped_already_indexed: skippedAlreadyIndexed,
@@ -204,6 +215,7 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
 
   res.json({
     historical_import: hydration,
+    full_history_mode: shouldBootstrapFullHistory,
     processed: items.length,
     fetched: messages.length,
     skipped_already_indexed: skippedAlreadyIndexed,
