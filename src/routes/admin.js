@@ -100,6 +100,10 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
     .map((item) => item.received_at || item.created_at)
     .filter(Boolean)
     .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
+  const oldestKnownReceivedAt = existingEmailItems
+    .map((item) => item.received_at || item.created_at)
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
   const requestedFullHistory = Boolean(req.body.fullHistory);
   const shouldBootstrapFullHistory =
     (requestedFullHistory ||
@@ -107,8 +111,12 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
     !req.body.since;
 
   let effectiveSince = req.body.since || "";
+  let effectiveUntil = req.body.until || "";
   if (shouldBootstrapFullHistory) {
     effectiveSince = "";
+    if (!effectiveUntil && oldestKnownReceivedAt) {
+      effectiveUntil = new Date(Date.parse(oldestKnownReceivedAt) - 1000).toISOString();
+    }
   } else if (!effectiveSince) {
     if (syncState.last_polled_at) {
       effectiveSince = syncState.last_polled_at;
@@ -118,6 +126,11 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
       effectiveSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     }
   }
+
+  const requestedTop = Number(req.body.top || config.email.sync.defaultTop);
+  const requestedMaxPages = Number(
+    req.body.maxPages || (shouldBootstrapFullHistory ? Math.min(20, config.email.sync.fullHistoryMaxPages) : config.email.sync.incrementalMaxPages)
+  );
 
   let messages = [];
   await updateSyncState("email", {
@@ -131,12 +144,9 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
     messages = await listGraphMessages({
       folder: "inbox",
       since: effectiveSince,
-      until: req.body.until || "",
-      top: Number(req.body.top || config.email.sync.defaultTop),
-      maxPages: Number(
-        req.body.maxPages ||
-          (shouldBootstrapFullHistory ? config.email.sync.fullHistoryMaxPages : config.email.sync.incrementalMaxPages)
-      ),
+      until: effectiveUntil,
+      top: requestedTop,
+      maxPages: requestedMaxPages,
       allowDeviceCode: false
     });
   } catch (error) {
@@ -208,7 +218,12 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
     phase: "completed",
     last_polled_at: new Date().toISOString(),
     last_effective_since: effectiveSince,
-    full_history_seeded: syncState.full_history_seeded || shouldBootstrapFullHistory,
+    last_effective_until: effectiveUntil || "",
+    full_history_seeded:
+      syncState.full_history_seeded ||
+      (shouldBootstrapFullHistory && messages.length < requestedTop * requestedMaxPages),
+    full_history_pending_more:
+      shouldBootstrapFullHistory && messages.length >= requestedTop * requestedMaxPages,
     fetched_count: messages.length,
     processed_count: items.length,
     skipped_already_indexed: skippedAlreadyIndexed,
@@ -220,6 +235,7 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
   res.json({
     historical_import: hydration,
     full_history_mode: shouldBootstrapFullHistory,
+    full_history_until: effectiveUntil || "",
     processed: items.length,
     fetched: messages.length,
     skipped_already_indexed: skippedAlreadyIndexed,
