@@ -103,7 +103,7 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
   const requestedFullHistory = Boolean(req.body.fullHistory);
   const shouldBootstrapFullHistory =
     (requestedFullHistory ||
-      (config.email.sync.fullHistoryOnFirstSync && !syncState.full_history_seeded && existingEmailItems.length === 0)) &&
+      (config.email.sync.fullHistoryOnFirstSync && !syncState.full_history_seeded)) &&
     !req.body.since;
 
   let effectiveSince = req.body.since || "";
