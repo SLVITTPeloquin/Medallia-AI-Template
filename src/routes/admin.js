@@ -19,6 +19,7 @@ import {
   upsertReviewItem
 } from "../services/review-store.js";
 import { getSyncState, updateSyncState } from "../services/sync-state.js";
+import { hydrateHistoricalEmailIndex } from "../services/historical-email-index.js";
 
 export const adminRouter = express.Router();
 
@@ -31,6 +32,9 @@ adminRouter.get("/api/review/summary", route(async (_req, res) => {
 }));
 
 adminRouter.get("/api/review/items", route(async (req, res) => {
+  if (!req.query.source || req.query.source === "email") {
+    await hydrateHistoricalEmailIndex();
+  }
   const items = await listReviewItems({
     status: req.query.status,
     source: req.query.source
@@ -72,6 +76,7 @@ adminRouter.post("/api/review/items/:id/send", route(async (req, res) => {
 }));
 
 adminRouter.post("/api/review/poll/email", route(async (req, res) => {
+  const hydration = await hydrateHistoricalEmailIndex();
   const existingEmailItems = await listReviewItems({ source: "email" });
   const knownSourceMessageIds = new Set(existingEmailItems.map((item) => item.source_message_id).filter(Boolean));
   const syncState = await getSyncState("email");
@@ -150,6 +155,7 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
   });
 
   res.json({
+    historical_import: hydration,
     processed: items.length,
     fetched: messages.length,
     skipped_already_indexed: skippedAlreadyIndexed,
