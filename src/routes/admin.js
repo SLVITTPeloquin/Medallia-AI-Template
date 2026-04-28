@@ -22,9 +22,21 @@ import { getSyncState, updateSyncState } from "../services/sync-state.js";
 import { hydrateHistoricalEmailIndex } from "../services/historical-email-index.js";
 
 export const adminRouter = express.Router();
+const EMAIL_AUTH_COOKIE = "email_auth_persisted";
 
 function route(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+}
+
+function hasPersistedEmailAuthCookie(req) {
+  const cookieHeader = String(req.headers.cookie || "");
+  if (!cookieHeader) {
+    return false;
+  }
+  return cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .some((part) => part.startsWith(`${EMAIL_AUTH_COOKIE}=`) && part.split("=")[1] === "1");
 }
 
 adminRouter.get("/api/review/summary", route(async (_req, res) => {
@@ -166,7 +178,8 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
 
 adminRouter.get("/api/review/auth/email/status", route(async (_req, res) => {
   const status = await getGraphAuthStatus();
-  res.json(status);
+  const persisted = hasPersistedEmailAuthCookie(_req);
+  res.json({ ...status, browser_persisted: persisted });
 }));
 
 adminRouter.get("/api/review/auth/email/start", route(async (_req, res) => {
@@ -195,6 +208,13 @@ adminRouter.get("/api/review/auth/email/callback", route(async (req, res) => {
   }
 
   await completeGraphAuthCodeLogin({ code, state });
+  res.cookie(EMAIL_AUTH_COOKIE, "1", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: true,
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    path: "/"
+  });
   const html = `<!doctype html><html><body><script>window.opener&&window.opener.postMessage({type:'graph_auth_result',status:'ok'},'*');window.close();</script>Sign-in complete. You can close this window.</body></html>`;
   return res.send(html);
 }));
