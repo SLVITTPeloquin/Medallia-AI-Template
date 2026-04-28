@@ -1,7 +1,8 @@
 import express from "express";
 import { config } from "../config.js";
 import {
-  beginGraphDeviceCodeLogin,
+  beginGraphAuthCodeLogin,
+  completeGraphAuthCodeLogin,
   getGraphAuthStatus,
   isGraphAuthRequiredError,
   listGraphMessages,
@@ -117,9 +118,34 @@ adminRouter.get("/api/review/auth/email/status", route(async (_req, res) => {
   res.json(status);
 }));
 
-adminRouter.post("/api/review/auth/email/start", route(async (_req, res) => {
-  const status = await beginGraphDeviceCodeLogin();
-  res.json(status);
+adminRouter.get("/api/review/auth/email/start", route(async (_req, res) => {
+  const status = await beginGraphAuthCodeLogin();
+  if (status.status === "authenticated") {
+    return res.redirect("/admin/?auth=ok");
+  }
+  if (status.url) {
+    return res.redirect(status.url);
+  }
+  return res.status(500).json({ error: "auth_start_failed" });
+}));
+
+adminRouter.get("/api/review/auth/email/callback", route(async (req, res) => {
+  const code = String(req.query.code || "");
+  const state = String(req.query.state || "");
+  const authError = String(req.query.error || "");
+  const authErrorDescription = String(req.query.error_description || "");
+
+  if (authError) {
+    const message = authErrorDescription || authError;
+    const html = `<!doctype html><html><body><script>window.opener&&window.opener.postMessage({type:'graph_auth_result',status:'error',message:${JSON.stringify(
+      message
+    )}},'*');window.close();</script>Sign-in failed. You can close this window.</body></html>`;
+    return res.status(400).send(html);
+  }
+
+  await completeGraphAuthCodeLogin({ code, state });
+  const html = `<!doctype html><html><body><script>window.opener&&window.opener.postMessage({type:'graph_auth_result',status:'ok'},'*');window.close();</script>Sign-in complete. You can close this window.</body></html>`;
+  return res.send(html);
 }));
 
 adminRouter.post("/api/review/poll/zingle", route(async (req, res) => {

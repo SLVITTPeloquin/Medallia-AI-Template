@@ -27,6 +27,8 @@ export const config = {
     graph: {
       tenantId: process.env.MS_GRAPH_TENANT_ID || "",
       clientId: process.env.MS_GRAPH_CLIENT_ID || "",
+      clientSecret: process.env.MS_GRAPH_CLIENT_SECRET || "",
+      redirectUri: process.env.MS_GRAPH_REDIRECT_URI || "",
       authorityUrl: process.env.MS_GRAPH_AUTHORITY_URL || "https://login.microsoftonline.com",
       scopes: process.env.MS_GRAPH_SCOPES || "offline_access User.Read Mail.Read",
       loginHint: process.env.MS_GRAPH_LOGIN_HINT || "",

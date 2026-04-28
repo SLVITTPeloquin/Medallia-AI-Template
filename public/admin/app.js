@@ -197,7 +197,7 @@ async function poll(source) {
       const prompt = error.payload.prompt || {};
       const message = prompt.message
         ? prompt.message
-        : "Email sign-in is required. Click Email Login and complete device-code auth.";
+        : "Email sign-in is required. Click Email Login and complete Microsoft sign-in.";
       setBanner(message, "warn");
       return;
     }
@@ -229,12 +229,12 @@ async function fetchJson(url, options) {
 }
 
 async function startEmailLogin() {
-  const result = await fetchJson("/api/review/auth/email/start", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" }
-  });
-  openMicrosoftLogin(result);
-  renderAuthBanner(result);
+  const popup = window.open("/api/review/auth/email/start", "_blank", "noopener,noreferrer");
+  if (!popup) {
+    setBanner("Popup blocked. Allow popups and click Email Login again.", "error");
+    return;
+  }
+  setBanner("Complete Microsoft sign-in in the new window.", "warn");
 }
 
 async function refreshEmailAuthStatus() {
@@ -249,13 +249,8 @@ function renderAuthBanner(status) {
   }
   if (status?.status === "pending") {
     const prompt = status.prompt || {};
-    const details = [
-      prompt.message,
-      prompt.verificationUri && prompt.userCode ? `Open ${prompt.verificationUri} and enter code ${prompt.userCode}.` : ""
-    ]
-      .filter(Boolean)
-      .join(" ");
-    setBanner(details || "Email login is pending. Complete device-code sign in.", "warn");
+    const details = [prompt.message].filter(Boolean).join(" ");
+    setBanner(details || "Email login is pending. Complete Microsoft sign-in in the popup window.", "warn");
     return;
   }
   if (status?.status === "failed") {
@@ -272,19 +267,18 @@ function setBanner(message, level) {
   banner.innerHTML = `<div class="banner banner-${escapeHtml(level || "ok")}">${escapeHtml(message || "")}</div>`;
 }
 
-function openMicrosoftLogin(status) {
-  const prompt = status?.prompt || {};
-  if (status?.status !== "pending") {
+window.addEventListener("message", async (event) => {
+  const data = event?.data || {};
+  if (data.type !== "graph_auth_result") {
     return;
   }
-
-  const url = prompt.verificationUriComplete || prompt.verificationUri || "https://microsoft.com/devicelogin";
-  try {
-    window.open(url, "_blank", "noopener,noreferrer");
-  } catch {
-    // Ignore popup blockers; banner still shows next step.
+  if (data.status === "ok") {
+    setBanner("Email auth connected.", "ok");
+    await refreshEmailAuthStatus();
+    return;
   }
-}
+  setBanner(`Email auth failed: ${data.message || "unknown error"}`, "error");
+});
 
 function escapeHtml(value = "") {
   return String(value)

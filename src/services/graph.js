@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
-import { PublicClientApplication } from "@azure/msal-node";
+import crypto from "node:crypto";
+import { ConfidentialClientApplication } from "@azure/msal-node";
 import { config } from "../config.js";
 
 class GraphAuthRequiredError extends Error {
@@ -11,7 +12,7 @@ class GraphAuthRequiredError extends Error {
   }
 }
 
-let pendingDeviceCodeLogin = null;
+const pendingAuthStates = new Map();
 
 function getAuthority() {
   const base = config.email.graph.authorityUrl.replace(/\/$/, "");
@@ -36,6 +37,26 @@ function getScopes() {
   return scopes;
 }
 
+function getRedirectUri() {
+  const uri = String(config.email.graph.redirectUri || "").trim();
+  if (!uri) {
+    throw new Error("Missing MS_GRAPH_REDIRECT_URI");
+  }
+  return uri;
+}
+
+function assertAuthCodeConfig() {
+  if (!config.email.graph.clientId) {
+    throw new Error("Missing MS_GRAPH_CLIENT_ID");
+  }
+  if (!config.email.graph.clientSecret) {
+    throw new Error("Missing MS_GRAPH_CLIENT_SECRET");
+  }
+  if (!config.email.graph.redirectUri) {
+    throw new Error("Missing MS_GRAPH_REDIRECT_URI");
+  }
+}
+
 async function readCache() {
   try {
     return await fs.readFile(config.email.graph.tokenCachePath, "utf8");
@@ -52,13 +73,12 @@ async function writeCache(serializedCache) {
 }
 
 async function createMsalClient() {
-  if (!config.email.graph.clientId) {
-    throw new Error("Missing MS_GRAPH_CLIENT_ID");
-  }
+  assertAuthCodeConfig();
 
-  const client = new PublicClientApplication({
+  const client = new ConfidentialClientApplication({
     auth: {
       clientId: config.email.graph.clientId,
+      clientSecret: config.email.graph.clientSecret,
       authority: getAuthority()
     }
   });
@@ -85,50 +105,21 @@ async function persistMsalCache(client) {
   try {
     await writeCache(client.getTokenCache().serialize());
   } catch {
-    // If cache serialization fails, continue without persisting.
-    // The current access token may still be valid for this run.
+    // continue without persisting
   }
 }
 
-export async function getGraphAccessToken() {
-  const client = await createMsalClient();
-  const scopes = getScopes();
-  const tokenCache = client.getTokenCache();
-  const cachedAccounts = await tokenCache.getAllAccounts();
-  const preferredAccount =
-    cachedAccounts.find((account) => account.username === config.email.graph.loginHint) ||
-    cachedAccounts[0] ||
-    null;
+function buildStateValue() {
+  return crypto.randomBytes(16).toString("hex");
+}
 
-  if (preferredAccount) {
-    try {
-      const silentResult = await client.acquireTokenSilent({
-        account: preferredAccount,
-        scopes
-      });
-
-      if (silentResult?.accessToken) {
-        await persistMsalCache(client);
-        return silentResult.accessToken;
-      }
-    } catch {
-      // Fall through to device-code login when the cached token cannot be refreshed.
+function cleanupExpiredStates() {
+  const now = Date.now();
+  for (const [key, entry] of pendingAuthStates.entries()) {
+    if (entry.expiresAt <= now) {
+      pendingAuthStates.delete(key);
     }
   }
-
-  const deviceCodeResult = await client.acquireTokenByDeviceCode({
-    scopes,
-    deviceCodeCallback(response) {
-      console.error(`[graph-auth] ${response.message}`);
-    }
-  });
-
-  if (!deviceCodeResult?.accessToken) {
-    throw new Error("Failed to acquire delegated Microsoft Graph access token");
-  }
-
-  await persistMsalCache(client);
-  return deviceCodeResult.accessToken;
 }
 
 async function getCachedGraphAccessToken() {
@@ -160,114 +151,106 @@ async function getCachedGraphAccessToken() {
   }
 }
 
-function mapDeviceCodePrompt(response) {
-  if (!response) {
-    return null;
+export async function getGraphAccessToken() {
+  const token = await getCachedGraphAccessToken();
+  if (token) {
+    return token;
   }
+  throw new GraphAuthRequiredError("Microsoft Graph sign-in is required before syncing email.", {
+    method: "auth_code",
+    message: "Click Email Login to sign in with Microsoft."
+  });
+}
+
+export async function beginGraphAuthCodeLogin() {
+  const cachedToken = await getCachedGraphAccessToken();
+  if (cachedToken) {
+    return { status: "authenticated", url: null };
+  }
+
+  cleanupExpiredStates();
+  const client = await createMsalClient();
+  const state = buildStateValue();
+  pendingAuthStates.set(state, {
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 10 * 60 * 1000
+  });
+
+  const url = await client.getAuthCodeUrl({
+    scopes: getScopes(),
+    redirectUri: getRedirectUri(),
+    state,
+    prompt: "select_account"
+  });
+
   return {
-    message: response.message || "",
-    userCode: response.userCode || "",
-    verificationUri: response.verificationUri || "",
-    verificationUriComplete: response.verificationUriComplete || "",
-    expiresIn: response.expiresIn || 0
+    status: "redirect",
+    url
   };
 }
 
-export async function beginGraphDeviceCodeLogin() {
-  const cachedToken = await getCachedGraphAccessToken();
-  if (cachedToken) {
-    pendingDeviceCodeLogin = null;
-    return { status: "authenticated", prompt: null };
+export async function completeGraphAuthCodeLogin({ code, state }) {
+  if (!code) {
+    throw new Error("Missing authorization code");
+  }
+  if (!state) {
+    throw new Error("Missing OAuth state");
   }
 
-  if (pendingDeviceCodeLogin && pendingDeviceCodeLogin.status === "pending") {
-    return {
-      status: "pending",
-      prompt: pendingDeviceCodeLogin.prompt
-    };
+  cleanupExpiredStates();
+  const stateEntry = pendingAuthStates.get(state);
+  if (!stateEntry) {
+    throw new Error("Invalid or expired OAuth state");
   }
+  pendingAuthStates.delete(state);
 
   const client = await createMsalClient();
-  const scopes = getScopes();
-
-  let resolvePrompt;
-  let rejectPrompt;
-  const promptReady = new Promise((resolve, reject) => {
-    resolvePrompt = resolve;
-    rejectPrompt = reject;
+  const result = await client.acquireTokenByCode({
+    code,
+    redirectUri: getRedirectUri(),
+    scopes: getScopes()
   });
 
-  const loginPromise = client.acquireTokenByDeviceCode({
-    scopes,
-    deviceCodeCallback(response) {
-      const prompt = mapDeviceCodePrompt(response);
-      pendingDeviceCodeLogin = {
-        status: "pending",
-        prompt
-      };
-      resolvePrompt(prompt);
-      console.error(`[graph-auth] ${response.message}`);
-    }
-  });
-
-  loginPromise
-    .then(async (result) => {
-      if (result?.accessToken) {
-        await persistMsalCache(client);
-        pendingDeviceCodeLogin = {
-          status: "authenticated",
-          prompt: null
-        };
-        return;
-      }
-      pendingDeviceCodeLogin = {
-        status: "failed",
-        prompt: null,
-        error: "Failed to acquire delegated Microsoft Graph access token"
-      };
-    })
-    .catch((error) => {
-      pendingDeviceCodeLogin = {
-        status: "failed",
-        prompt: null,
-        error: error?.message || "Graph login failed"
-      };
-    });
-
-  try {
-    const prompt = await Promise.race([
-      promptReady,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Timed out preparing device code prompt")), 8000))
-    ]);
-    return { status: "pending", prompt };
-  } catch (error) {
-    rejectPrompt(error);
-    throw error;
+  if (!result?.accessToken) {
+    throw new Error("Failed to complete Microsoft sign-in");
   }
+
+  await persistMsalCache(client);
+  return { status: "authenticated" };
 }
 
 export async function getGraphAuthStatus() {
-  const cachedToken = await getCachedGraphAccessToken();
-  if (cachedToken) {
-    return { status: "authenticated", prompt: null };
-  }
-
-  if (pendingDeviceCodeLogin?.status === "pending") {
-    return {
-      status: "pending",
-      prompt: pendingDeviceCodeLogin.prompt
-    };
-  }
-
-  if (pendingDeviceCodeLogin?.status === "failed") {
+  try {
+    const cachedToken = await getCachedGraphAccessToken();
+    if (cachedToken) {
+      return { status: "authenticated", prompt: null };
+    }
+  } catch (error) {
     return {
       status: "failed",
       prompt: null,
-      error: pendingDeviceCodeLogin.error || "Graph login failed"
+      error: error.message || "Graph auth configuration error"
     };
   }
 
-  return { status: "not_authenticated", prompt: null };
+  cleanupExpiredStates();
+  if (pendingAuthStates.size > 0) {
+    return {
+      status: "pending",
+      prompt: {
+        method: "auth_code",
+        message: "Microsoft sign-in window is open. Complete login to continue."
+      }
+    };
+  }
+
+  return {
+    status: "not_authenticated",
+    prompt: {
+      method: "auth_code",
+      message: "Click Email Login to sign in with Microsoft."
+    }
+  };
 }
 
 export function isGraphAuthRequiredError(error) {
@@ -328,7 +311,7 @@ export async function listGraphMessages({
   orderBy,
   allowDeviceCode = true
 } = {}) {
-  const token = allowDeviceCode ? await getGraphAccessToken() : await getCachedGraphAccessToken();
+  const token = await getCachedGraphAccessToken();
   if (!token) {
     const status = await getGraphAuthStatus();
     throw new GraphAuthRequiredError("Microsoft Graph sign-in is required before syncing email.", status.prompt || null);
