@@ -233,6 +233,7 @@ async function startEmailLogin() {
     method: "POST",
     headers: { "Content-Type": "application/json" }
   });
+  openMicrosoftLogin(result);
   renderAuthBanner(result);
 }
 
@@ -248,7 +249,10 @@ function renderAuthBanner(status) {
   }
   if (status?.status === "pending") {
     const prompt = status.prompt || {};
-    const details = [prompt.message, prompt.verificationUri && prompt.userCode ? `Open ${prompt.verificationUri} and enter code ${prompt.userCode}.` : ""]
+    const details = [
+      prompt.message,
+      prompt.verificationUri && prompt.userCode ? `Open ${prompt.verificationUri} and enter code ${prompt.userCode}.` : ""
+    ]
       .filter(Boolean)
       .join(" ");
     setBanner(details || "Email login is pending. Complete device-code sign in.", "warn");
@@ -266,6 +270,20 @@ function setBanner(message, level) {
     return;
   }
   banner.innerHTML = `<div class="banner banner-${escapeHtml(level || "ok")}">${escapeHtml(message || "")}</div>`;
+}
+
+function openMicrosoftLogin(status) {
+  const prompt = status?.prompt || {};
+  if (status?.status !== "pending") {
+    return;
+  }
+
+  const url = prompt.verificationUriComplete || prompt.verificationUri || "https://microsoft.com/devicelogin";
+  try {
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch {
+    // Ignore popup blockers; banner still shows next step.
+  }
 }
 
 function escapeHtml(value = "") {

@@ -168,6 +168,7 @@ function mapDeviceCodePrompt(response) {
     message: response.message || "",
     userCode: response.userCode || "",
     verificationUri: response.verificationUri || "",
+    verificationUriComplete: response.verificationUriComplete || "",
     expiresIn: response.expiresIn || 0
   };
 }
