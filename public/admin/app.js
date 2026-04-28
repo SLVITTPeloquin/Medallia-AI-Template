@@ -1,5 +1,6 @@
 let items = [];
 let selectedId = "";
+let senderHistoryRequestToken = 0;
 
 const metrics = document.querySelector("#metrics");
 const banner = document.querySelector("#banner");
@@ -168,6 +169,13 @@ function renderDetail(item) {
         <textarea class="draftEditor" id="categoryReviewNotes" placeholder="Category review notes">${escapeHtml(item.category_review_notes || "")}</textarea>
         <textarea class="draftEditor" id="notes" placeholder="Reviewer notes">${escapeHtml(item.notes || "")}</textarea>
       </section>
+      <section class="panel">
+        <h3>Sender History</h3>
+        <p class="meta">Conversation history with ${escapeHtml(item.sender_email || "this sender")} (not limited to the 30-day queue window).</p>
+        <div id="senderHistory" class="historyList">
+          <div class="meta">Loading history...</div>
+        </div>
+      </section>
     </div>
   `;
 
@@ -183,6 +191,56 @@ function renderDetail(item) {
   }
   for (const checkbox of detail.querySelectorAll("[data-check-index]")) {
     checkbox.addEventListener("change", () => saveItem(item.id));
+  }
+  loadSenderHistory(item);
+}
+
+async function loadSenderHistory(item) {
+  const historyEl = document.querySelector("#senderHistory");
+  if (!historyEl) {
+    return;
+  }
+  const email = String(item?.sender_email || "").trim();
+  if (!email) {
+    historyEl.innerHTML = `<div class="meta">No sender email found for this item.</div>`;
+    return;
+  }
+
+  const token = Date.now();
+  senderHistoryRequestToken = token;
+  historyEl.innerHTML = `<div class="meta">Loading sender history...</div>`;
+  try {
+    const payload = await fetchJson(`/api/review/items/${encodeURIComponent(item.id)}/history?limit=80&maxPages=8`);
+    if (senderHistoryRequestToken !== token) {
+      return;
+    }
+    const rows = Array.isArray(payload?.history) ? payload.history : [];
+    if (!rows.length) {
+      historyEl.innerHTML = `<div class="meta">No prior messages found with this sender.</div>`;
+      return;
+    }
+    historyEl.innerHTML = rows
+      .map((entry) => {
+        const directionClass = entry.direction === "inbound" ? "inbound" : "outbound";
+        const preview = entry.preview || entry.body || "";
+        return `
+          <article class="historyItem ${directionClass}">
+            <div class="rowTop">
+              <span class="badge ${directionClass}">${escapeHtml(entry.direction || "message")}</span>
+              <span class="meta">${escapeHtml(formatTimestamp(entry.at))}</span>
+            </div>
+            <div class="subject">${escapeHtml(entry.subject || "(no subject)")}</div>
+            <div class="meta">${escapeHtml(entry.from || "")}${Array.isArray(entry.to) && entry.to.length ? ` → ${escapeHtml(entry.to.join(", "))}` : ""}</div>
+            <div class="inbound">${escapeHtml(preview)}</div>
+          </article>
+        `;
+      })
+      .join("");
+  } catch (error) {
+    if (senderHistoryRequestToken !== token) {
+      return;
+    }
+    historyEl.innerHTML = `<div class="meta">Unable to load sender history: ${escapeHtml(error.message || "unknown error")}</div>`;
   }
 }
 

@@ -5,6 +5,7 @@ import {
   completeGraphAuthCodeLogin,
   getGraphAuthStatus,
   isGraphAuthRequiredError,
+  listGraphCorrespondenceWithSender,
   listGraphMessages,
   normalizeGraphMessage
 } from "../services/graph.js";
@@ -23,6 +24,7 @@ import { hydrateHistoricalEmailIndex } from "../services/historical-email-index.
 
 export const adminRouter = express.Router();
 const EMAIL_AUTH_COOKIE = "email_auth_persisted";
+const QUEUE_HISTORY_WINDOW_DAYS = 30;
 
 function route(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -100,37 +102,24 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
     .map((item) => item.received_at || item.created_at)
     .filter(Boolean)
     .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
-  const oldestKnownReceivedAt = existingEmailItems
-    .map((item) => item.received_at || item.created_at)
-    .filter(Boolean)
-    .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
-  const requestedFullHistory = Boolean(req.body.fullHistory);
-  const shouldBootstrapFullHistory =
-    (requestedFullHistory ||
-      (config.email.sync.fullHistoryOnFirstSync && !syncState.full_history_seeded)) &&
-    !req.body.since;
-
+  const queueWindowStart = new Date(Date.now() - QUEUE_HISTORY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   let effectiveSince = req.body.since || "";
   let effectiveUntil = req.body.until || "";
-  if (shouldBootstrapFullHistory) {
-    effectiveSince = "";
-    if (!effectiveUntil && oldestKnownReceivedAt) {
-      effectiveUntil = new Date(Date.parse(oldestKnownReceivedAt) - 1000).toISOString();
-    }
-  } else if (!effectiveSince) {
+  if (!effectiveSince) {
     if (syncState.last_polled_at) {
       effectiveSince = syncState.last_polled_at;
     } else if (latestKnownReceivedAt) {
       effectiveSince = new Date(Date.parse(latestKnownReceivedAt) - 5 * 60 * 1000).toISOString();
     } else {
-      effectiveSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      effectiveSince = queueWindowStart;
     }
+  }
+  if (!effectiveSince || Date.parse(effectiveSince) < Date.parse(queueWindowStart)) {
+    effectiveSince = queueWindowStart;
   }
 
   const requestedTop = Number(req.body.top || config.email.sync.defaultTop);
-  const requestedMaxPages = Number(
-    req.body.maxPages || (shouldBootstrapFullHistory ? Math.min(20, config.email.sync.fullHistoryMaxPages) : config.email.sync.incrementalMaxPages)
-  );
+  const requestedMaxPages = Number(req.body.maxPages || config.email.sync.incrementalMaxPages);
 
   let messages = [];
   await updateSyncState("email", {
@@ -224,11 +213,8 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
     last_polled_at: new Date().toISOString(),
     last_effective_since: effectiveSince,
     last_effective_until: effectiveUntil || "",
-    full_history_seeded:
-      syncState.full_history_seeded ||
-      (shouldBootstrapFullHistory && messages.length < requestedTop * requestedMaxPages),
-    full_history_pending_more:
-      shouldBootstrapFullHistory && messages.length >= requestedTop * requestedMaxPages,
+    full_history_seeded: true,
+    full_history_pending_more: false,
     fetched_count: messages.length,
     processed_count: items.length,
     skipped_already_indexed: skippedAlreadyIndexed,
@@ -239,13 +225,59 @@ adminRouter.post("/api/review/poll/email", route(async (req, res) => {
 
   res.json({
     historical_import: hydration,
-    full_history_mode: shouldBootstrapFullHistory,
+    full_history_mode: false,
     full_history_until: effectiveUntil || "",
     processed: items.length,
     fetched: messages.length,
     skipped_already_indexed: skippedAlreadyIndexed,
     since: effectiveSince,
     items
+  });
+}));
+
+adminRouter.get("/api/review/items/:id/history", route(async (req, res) => {
+  const itemId = String(req.params.id || "");
+  const all = await listReviewItems();
+  const selected = all.find((entry) => entry.id === itemId);
+  if (!selected) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
+  const senderEmail = String(selected.sender_email || "").trim();
+  if (!senderEmail) {
+    return res.json({ sender_email: "", history: [], truncated: false });
+  }
+
+  const perFolderTop = Math.max(10, Math.min(100, Number(req.query.perFolderTop || 50)));
+  const perFolderMaxPages = Math.max(1, Math.min(20, Number(req.query.maxPages || 8)));
+  const maxResults = Math.max(10, Math.min(300, Number(req.query.limit || 80)));
+  const messages = await listGraphCorrespondenceWithSender({
+    senderEmail,
+    perFolderTop,
+    perFolderMaxPages,
+    maxResults
+  });
+
+  const history = messages.map((message) => {
+    const from = message.from?.emailAddress?.address || message.sender?.emailAddress?.address || "";
+    const to = (message.toRecipients || []).map((entry) => entry.emailAddress?.address).filter(Boolean);
+    return {
+      id: message.id || "",
+      conversation_id: message.conversationId || "",
+      subject: message.subject || "",
+      direction: String(from).toLowerCase() === senderEmail.toLowerCase() ? "inbound" : "outbound",
+      from,
+      to,
+      at: message.receivedDateTime || message.sentDateTime || message.createdDateTime || "",
+      preview: message.bodyPreview || "",
+      body: message.body?.content || ""
+    };
+  });
+
+  return res.json({
+    sender_email: senderEmail,
+    history,
+    truncated: messages.length >= maxResults
   });
 }));
 

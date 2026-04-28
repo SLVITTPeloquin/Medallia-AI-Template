@@ -450,3 +450,54 @@ export function normalizeGraphMessage(message) {
     provider: "microsoft-graph"
   };
 }
+
+function normalizeAddress(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function messageAddresses(message = {}) {
+  const from = normalizeAddress(message.from?.emailAddress?.address || message.sender?.emailAddress?.address || "");
+  const to = Array.isArray(message.toRecipients)
+    ? message.toRecipients.map((entry) => normalizeAddress(entry?.emailAddress?.address || "")).filter(Boolean)
+    : [];
+  const cc = Array.isArray(message.ccRecipients)
+    ? message.ccRecipients.map((entry) => normalizeAddress(entry?.emailAddress?.address || "")).filter(Boolean)
+    : [];
+  return { from, to, cc };
+}
+
+export async function listGraphCorrespondenceWithSender({
+  senderEmail,
+  perFolderTop = 50,
+  perFolderMaxPages = 12,
+  maxResults = 120
+} = {}) {
+  const target = normalizeAddress(senderEmail);
+  if (!target) {
+    return [];
+  }
+
+  const [inboxMessages, sentMessages] = await Promise.all([
+    listGraphMessages({
+      folder: "inbox",
+      top: perFolderTop,
+      maxPages: perFolderMaxPages,
+      allowDeviceCode: false
+    }),
+    listGraphMessages({
+      folder: "sentitems",
+      top: perFolderTop,
+      maxPages: perFolderMaxPages,
+      allowDeviceCode: false
+    })
+  ]);
+
+  const combined = [...inboxMessages, ...sentMessages];
+  const filtered = combined.filter((message) => {
+    const addresses = messageAddresses(message);
+    return addresses.from === target || addresses.to.includes(target) || addresses.cc.includes(target);
+  });
+
+  filtered.sort((a, b) => Date.parse(b.receivedDateTime || b.sentDateTime || b.createdDateTime || 0) - Date.parse(a.receivedDateTime || a.sentDateTime || a.createdDateTime || 0));
+  return filtered.slice(0, Math.max(1, Number(maxResults) || 120));
+}

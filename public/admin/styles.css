@@ -357,6 +357,28 @@ h1 {
   flex-wrap: wrap;
 }
 
+.historyList {
+  display: grid;
+  gap: 10px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.historyItem {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+
+.historyItem.inbound {
+  border-left: 4px solid var(--accent-gold);
+}
+
+.historyItem.outbound {
+  border-left: 4px solid var(--accent-teal);
+}
+
 .empty {
   display: grid;
   place-content: center;
